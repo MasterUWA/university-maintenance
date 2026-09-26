@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>CampusCare</title>
+  <rect width="64" height="64" rx="16" fill="#18322d"/>
+  <path d="M32 12 47 18v12c0 10-6.2 18.2-15 22-8.8-3.8-15-12-15-22V18l15-6Z" fill="#e5a72f"/>
+  <path d="M32 22v18M23 31h18" stroke="#18322d" stroke-width="5" stroke-linecap="round"/>
+</svg>

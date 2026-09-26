@@ -1,0 +1,19 @@
+@extends('layouts.app')
+
+@section('content')
+<div class="mx-auto max-w-6xl">
+    @php
+        $user = auth()->user();
+        $query = \App\Models\ServiceRequest::query();
+        if ($user->hasRole('STUDENT_STAFF')) $query->where('requester_id', $user->id);
+        $total = (clone $query)->count();
+        $pending = (clone $query)->where('status', 'PENDING')->count();
+        $inProgress = (clone $query)->whereIn('status', ['ASSIGNED', 'IN_PROGRESS'])->count();
+        $completed = (clone $query)->where('status', 'COMPLETED')->count();
+        $recentRequests = (clone $query)->with('category')->latest()->limit(5)->get();
+    @endphp
+    <div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p class="text-sm font-bold uppercase tracking-[0.16em] text-[#39766b]">Overview</p><h1 class="mt-2 text-4xl font-bold tracking-tight">Your service desk</h1><p class="mt-3 text-[#6b817b]">A live view of requests connected to your account.</p></div><a href="{{ route('requests.index') }}" class="font-bold text-[#39766b] underline decoration-[#b9d6ce] underline-offset-4">See all requests -&gt;</a></div>
+    <div class="mt-9 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><div class="rounded-2xl bg-[#18322d] p-5 text-white"><p class="text-sm text-[#b9d6ce]">Total requests</p><p class="mt-5 text-4xl font-bold">{{ $total }}</p><p class="mt-2 text-xs text-[#9fc2b7]">Visible to you</p></div><div class="rounded-2xl border border-[#d8e6e1] bg-white p-5"><p class="text-sm text-[#6b817b]">Pending</p><p class="mt-5 text-4xl font-bold">{{ $pending }}</p><p class="mt-2 text-xs text-[#9aada7]">Awaiting assignment</p></div><div class="rounded-2xl border border-[#d8e6e1] bg-white p-5"><p class="text-sm text-[#6b817b]">In progress</p><p class="mt-5 text-4xl font-bold text-[#39766b]">{{ $inProgress }}</p><p class="mt-2 text-xs text-[#9aada7]">Assigned or active</p></div><div class="rounded-2xl border border-[#d8e6e1] bg-white p-5"><p class="text-sm text-[#6b817b]">Completed</p><p class="mt-5 text-4xl font-bold text-[#c28a1f]">{{ $completed }}</p><p class="mt-2 text-xs text-[#9aada7]">Resolved requests</p></div></div>
+    <div class="mt-8 grid gap-6 xl:grid-cols-[1.4fr_0.6fr]"><section class="rounded-2xl border border-[#d8e6e1] bg-white p-6"><div class="flex items-center justify-between"><h2 class="text-xl font-bold">Recent activity</h2><span class="rounded-full bg-[#f4f7f5] px-3 py-1 text-xs font-bold text-[#6b817b]">Live data</span></div><div class="mt-5 divide-y divide-[#edf2f0]">@forelse($recentRequests as $request)<a href="{{ route('requests.show', $request) }}" class="flex items-center justify-between gap-4 py-4 transition hover:bg-[#f8fbfa]"><div class="min-w-0"><p class="truncate font-bold">{{ $request->title }}</p><p class="mt-1 truncate text-sm text-[#7a938b]">{{ $request->category->name }} &middot; {{ $request->location }}</p></div><span class="shrink-0 rounded-full bg-[#e9f5f1] px-3 py-1 text-xs font-bold text-[#39766b]">{{ str_replace('_', ' ', $request->status) }}</span></a>@empty<div class="py-10 text-center"><p class="font-bold">No requests yet</p><p class="mt-2 text-sm text-[#7a938b]">Start by reporting a campus issue.</p></div>@endforelse</div></section><aside class="rounded-2xl bg-[#e5a72f] p-6 text-[#18322d]"><p class="text-sm font-bold uppercase tracking-[0.16em]">Need something fixed?</p><h2 class="mt-4 text-2xl font-bold leading-tight">Give the facilities team a clear starting point.</h2><p class="mt-3 text-sm leading-6 text-[#5e4b1b]">Include the location, category, and urgency so your request reaches the right person faster.</p><a href="{{ route('requests.create') }}" class="mt-7 inline-block rounded-full bg-[#18322d] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#285248]">Create a request -&gt;</a></aside></div>
+</div>
+@endsection

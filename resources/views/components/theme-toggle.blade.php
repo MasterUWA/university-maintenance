@@ -1,0 +1,3 @@
+<button type="button" data-theme-toggle aria-label="Toggle light and dark theme" aria-pressed="false" class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#cfe0db] bg-white/70 text-[#31534b] transition hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-[#e5a72f]" title="Toggle light and dark theme">
+    <span aria-hidden="true" class="text-lg">&#9788;</span>
+</button>
