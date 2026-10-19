@@ -9,6 +9,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="theme-page min-h-screen text-[#18322d] antialiased dark:text-[#e7f2ee]">
+    <x-particles />
     <div class="min-h-screen lg:flex">
         <aside class="border-b border-[#d8e6e1] bg-[#18322d] text-white lg:flex lg:w-72 lg:flex-col lg:border-b-0 lg:border-r lg:border-white/10">
             <div class="flex items-center justify-between px-6 py-5 lg:block lg:px-7 lg:py-7"><a href="{{ route('dashboard') }}" class="flex items-center gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#e5a72f] font-bold text-[#18322d]">C</span><span><span class="block font-bold">CampusCare</span><span class="block text-xs text-[#9fc2b7]">Facilities workspace</span></span></a><span class="hidden rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-[#b9d6ce] lg:mt-8 lg:inline-block">{{ auth()->user()->getRoleNames()->first() ?? 'Member' }}</span></div>

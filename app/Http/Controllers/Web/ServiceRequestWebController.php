@@ -318,21 +318,24 @@ class ServiceRequestWebController extends Controller
 
         return response()->streamDownload(function () use ($requests) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['ID', 'Title', 'Category', 'Location', 'Priority', 'Status', 'Requester', 'Created At']);
+            // BOM makes Excel read UTF-8; "ID" as the first cell would be mistaken for a SYLK file
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, ['Request ID', 'Title', 'Category', 'Location', 'Priority', 'Status', 'Requester', 'Created At']);
+            $safe = fn ($value) => is_string($value) && preg_match('/^[=+\-@\t\r]/', $value) ? "'".$value : $value;
             foreach ($requests as $serviceRequest) {
                 fputcsv($handle, [
                     $serviceRequest->id,
-                    $serviceRequest->title,
-                    $serviceRequest->category?->name,
-                    $serviceRequest->location,
+                    $safe($serviceRequest->title),
+                    $safe($serviceRequest->category?->name),
+                    $safe($serviceRequest->location),
                     $serviceRequest->priority,
                     $serviceRequest->status,
-                    $serviceRequest->requester?->name,
+                    $safe($serviceRequest->requester?->name),
                     $serviceRequest->created_at?->toDateTimeString(),
                 ]);
             }
             fclose($handle);
-        }, 'service-requests.csv', ['Content-Type' => 'text/csv']);
+        }, 'service-requests-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     private function visibleRequests($user)

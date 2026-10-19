@@ -3,8 +3,8 @@
     if (!canvas) return;
 
     var ctx = canvas.getContext('2d');
-    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var mouse = { x: null, y: null };
+    var drag = { node: null, lastX: 0, lastY: 0, vx: 0, vy: 0 };
     var particles = [];
     var cfg;
     var width;
@@ -46,13 +46,26 @@
         for (var i = 0; i < particles.length; i++) {
             var p = particles[i];
 
-            if (!reduceMotion) {
+            if (p === drag.node) {
+                p.x = mouse.x;
+                p.y = mouse.y;
+            } else {
                 p.x += p.vx;
                 p.y += p.vy;
                 if (p.x < 0 || p.x > width) p.vx *= -1;
                 if (p.y < 0 || p.y > height) p.vy *= -1;
 
-                if (mouse.x !== null) {
+                if (drag.node) {
+                    // Linked neighbours are pulled along with the dragged node
+                    var gx = drag.node.x - p.x;
+                    var gy = drag.node.y - p.y;
+                    var gd = Math.sqrt(gx * gx + gy * gy);
+                    if (gd < maxDist && gd > 1) {
+                        var pull = (1 - gd / maxDist) * 0.02;
+                        p.x += gx * pull;
+                        p.y += gy * pull;
+                    }
+                } else if (mouse.x !== null) {
                     var dx = p.x - mouse.x;
                     var dy = p.y - mouse.y;
                     var d = Math.sqrt(dx * dx + dy * dy);
@@ -87,18 +100,68 @@
             }
         }
 
-        if (!reduceMotion) requestAnimationFrame(step);
+        requestAnimationFrame(step);
     }
+
+    function nodeAt(x, y) {
+        var best = null;
+        var bestDist = 14;
+        for (var i = 0; i < particles.length; i++) {
+            var d = Math.hypot(particles[i].x - x, particles[i].y - y) - particles[i].r;
+            if (d < bestDist) {
+                bestDist = d;
+                best = particles[i];
+            }
+        }
+        return best;
+    }
+
+    function isInteractive(el) {
+        return el && el.closest && el.closest('a,button,input,select,textarea,label,summary,[role=button]');
+    }
+
+    window.addEventListener('pointerdown', function (e) {
+        if (!cfg || isInteractive(e.target)) return;
+        var node = nodeAt(e.clientX, e.clientY);
+        if (!node) return;
+        drag.node = node;
+        drag.lastX = e.clientX;
+        drag.lastY = e.clientY;
+        drag.vx = 0;
+        drag.vy = 0;
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+        e.preventDefault();
+    });
+
+    function release() {
+        if (!drag.node) return;
+        drag.node.vx = Math.max(-4, Math.min(4, drag.vx));
+        drag.node.vy = Math.max(-4, Math.min(4, drag.vy));
+        drag.node = null;
+    }
+
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
 
     window.addEventListener('resize', function () {
         resize();
         if (cfg) create();
     });
-    window.addEventListener('mousemove', function (e) {
+    window.addEventListener('pointermove', function (e) {
+        if (drag.node) {
+            drag.vx = (e.clientX - drag.lastX) * 0.5;
+            drag.vy = (e.clientY - drag.lastY) * 0.5;
+            drag.lastX = e.clientX;
+            drag.lastY = e.clientY;
+        } else if (cfg && !isInteractive(e.target)) {
+            document.body.style.cursor = nodeAt(e.clientX, e.clientY) ? 'grab' : '';
+        }
         mouse.x = e.clientX;
         mouse.y = e.clientY;
     });
-    window.addEventListener('mouseout', function () {
+    window.addEventListener('mouseout', function (e) {
+        if (e.relatedTarget || drag.node) return;
         mouse.x = null;
         mouse.y = null;
     });
