@@ -18,6 +18,15 @@ class FrontendPagesTest extends TestCase
         $this->get('/')->assertOk()->assertSee('CampusCare')->assertSee('Keep every campus space moving.');
     }
 
+    public function test_public_about_page_explains_the_service_and_links_to_login(): void
+    {
+        $this->get('/about')
+            ->assertOk()
+            ->assertSee('About CampusCare')
+            ->assertSee('Better campus spaces start with clear communication.')
+            ->assertSee(route('login'));
+    }
+
     public function test_authentication_pages_are_rendered(): void
     {
         $this->get('/login')->assertOk()->assertSee('Email');

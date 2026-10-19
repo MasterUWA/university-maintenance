@@ -17,10 +17,14 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
     <body class="theme-page font-sans text-gray-900 antialiased dark:text-gray-100">
+        <x-particles />
         <div class="min-h-screen flex flex-col sm:justify-center items-center px-6 py-8">
-            <div class="mb-5 flex w-full max-w-md justify-end"><x-theme-toggle /></div>
+            <div class="mb-5 flex w-full max-w-md items-center justify-between">
+                <a href="{{ url('/') }}" class="text-sm font-semibold text-[#31534b] hover:underline dark:text-[#b9d6ce]">&larr; Back to home</a>
+                <x-theme-toggle />
+            </div>
             <div>
-                <a href="/" class="flex items-center gap-3">
+                <a href="{{ url('/') }}" class="flex items-center gap-3">
                     <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1f6f63] text-lg font-bold text-white">C</span>
                     <span class="text-lg font-bold text-[#18322d] dark:text-white">CampusCare</span>
                 </a>

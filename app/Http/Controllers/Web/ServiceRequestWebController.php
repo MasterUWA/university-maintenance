@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\AuditLog;
 use App\Models\Notification;
 use App\Models\ServiceRequest;
+use App\Models\StatusUpdate;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,13 +19,38 @@ class ServiceRequestWebController extends Controller
 {
     public function index(Request $request): View
     {
+        $query = $this->visibleRequests($request->user())->with(['category', 'requester']);
+        $this->applySearch($query, $request);
+
         return view('requests.index', [
-            'requests' => $this->visibleRequests($request->user())
-                ->with(['category', 'requester'])
-                ->latest()
-                ->paginate(10)
-                ->withQueryString(),
+            'requests' => $query->latest()->paginate(10)->withQueryString(),
+            'categories' => Category::orderBy('name')->get(),
         ]);
+    }
+
+    private function applySearch($query, Request $request): void
+    {
+        $term = trim((string) $request->query('search', ''));
+        $like = '%'.addcslashes($term, '%_\\').'%';
+
+        $query
+            ->when($term !== '', fn ($q) => $q->where(function ($q) use ($like, $term) {
+                $q->where('title', 'like', $like)
+                    ->orWhere('description', 'like', $like)
+                    ->orWhere('location', 'like', $like)
+                    ->orWhereHas('requester', fn ($r) => $r->where('name', 'like', $like))
+                    ->orWhereHas('category', fn ($c) => $c->where('name', 'like', $like));
+                if (ctype_digit(ltrim($term, '#'))) {
+                    $q->orWhere('id', (int) ltrim($term, '#'));
+                }
+            }))
+            ->when(in_array($request->query('status'), ['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED', 'CANCELLED'], true),
+                fn ($q) => $q->where('status', $request->query('status')))
+            ->when(in_array($request->query('priority'), ['LOW', 'MEDIUM', 'HIGH', 'URGENT'], true),
+                fn ($q) => $q->where('priority', $request->query('priority')))
+            ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', (int) $request->query('category_id')))
+            ->when($request->boolean('overdue'), fn ($q) => $q
+                ->whereIn('status', ServiceRequest::OPEN_STATUSES)->where('due_at', '<', now()));
     }
 
     public function create(): View
@@ -76,7 +102,16 @@ class ServiceRequestWebController extends Controller
             ->with(['category', 'requester', 'assignments.officer', 'statusUpdates.officer', 'attachments'])
             ->findOrFail($id);
 
-        return view('requests.show', ['request' => $serviceRequest]);
+        $comments = $serviceRequest->comments()->with('user')
+            ->when($request->user()->hasRole('STUDENT_STAFF'), fn ($query) => $query->where('is_internal', false))
+            ->get();
+
+        return view('requests.show', [
+            'request' => $serviceRequest,
+            'comments' => $comments,
+            'officers' => $request->user()->hasRole('ADMIN') ? User::role('OFFICER')->orderBy('name')->get() : collect(),
+            'canUpdateStatus' => $this->canUpdateStatus($request->user(), $serviceRequest),
+        ]);
     }
 
     public function adminIndex(Request $request): View
@@ -86,7 +121,148 @@ class ServiceRequestWebController extends Controller
 
     public function officerIndex(Request $request): View
     {
-        return $this->index($request);
+        $assignments = ServiceRequest::query()
+            ->whereHas('assignments', fn ($query) => $query->where('officer_id', $request->user()->id))
+            ->whereIn('status', ServiceRequest::OPEN_STATUSES)
+            ->with(['category', 'requester'])
+            ->tap(fn ($q) => $this->applySearch($q, $request))
+            ->orderByRaw("CASE priority WHEN 'URGENT' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END")
+            ->orderBy('due_at')
+            ->get();
+
+        return view('requests.officer-assignments', [
+            'assignments' => $assignments,
+            'overdueCount' => $assignments->filter->isOverdue()->count(),
+            'atRiskCount' => $assignments->filter->isAtRisk()->count(),
+        ]);
+    }
+
+    public function assign(Request $request, int $id): RedirectResponse
+    {
+        $serviceRequest = ServiceRequest::findOrFail($id);
+        $data = $request->validate([
+            'officer_id' => ['required', 'exists:users,id'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $officer = User::findOrFail($data['officer_id']);
+        abort_unless($officer->hasRole('OFFICER'), 422, 'The selected user is not an officer.');
+
+        $serviceRequest->assignTo($officer, $request->user(), $data['notes'] ?? null);
+
+        return redirect()->route('requests.show', $serviceRequest)->with('status', "Assigned to {$officer->name}.");
+    }
+
+    public function autoAssign(Request $request, int $id): RedirectResponse
+    {
+        $serviceRequest = ServiceRequest::findOrFail($id);
+        $officer = User::leastBusyOfficer();
+
+        if (! $officer) {
+            return redirect()->route('requests.show', $serviceRequest)->with('status', 'No officers are available to assign.');
+        }
+
+        $serviceRequest->assignTo($officer, $request->user(), 'Auto-assigned to the officer with the lightest workload.');
+
+        return redirect()->route('requests.show', $serviceRequest)->with('status', "Auto-assigned to {$officer->name}.");
+    }
+
+    public function updateStatus(Request $request, int $id): RedirectResponse
+    {
+        $serviceRequest = ServiceRequest::with('assignments')->findOrFail($id);
+        abort_unless($this->canUpdateStatus($request->user(), $serviceRequest), 403);
+
+        $data = $request->validate([
+            'status' => ['required', 'in:ASSIGNED,IN_PROGRESS,COMPLETED,REJECTED,CANCELLED'],
+            'comment' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        StatusUpdate::create([
+            'request_id' => $serviceRequest->id,
+            'officer_id' => $request->user()->id,
+            'status' => $data['status'],
+            'comment' => $data['comment'] ?? null,
+        ]);
+        $serviceRequest->update(['status' => $data['status']]);
+
+        Notification::create([
+            'user_id' => $serviceRequest->requester_id,
+            'title' => 'Request Update',
+            'message' => "Your request #{$serviceRequest->id} is now {$data['status']}.",
+        ]);
+
+        return redirect()->route('requests.show', $serviceRequest)->with('status', 'Status updated.');
+    }
+
+    public function comment(Request $request, int $id): RedirectResponse
+    {
+        $serviceRequest = $this->visibleRequests($request->user())->with('assignments')->findOrFail($id);
+        $data = $request->validate([
+            'body' => ['required', 'string', 'max:2000'],
+            'is_internal' => ['sometimes', 'boolean'],
+        ]);
+
+        $isInternal = ! $request->user()->hasRole('STUDENT_STAFF') && $request->boolean('is_internal');
+
+        $serviceRequest->comments()->create([
+            'user_id' => $request->user()->id,
+            'body' => $data['body'],
+            'is_internal' => $isInternal,
+        ]);
+
+        $recipients = $request->user()->id === $serviceRequest->requester_id
+            ? $serviceRequest->assignments->pluck('officer_id')->unique()
+            : ($isInternal ? collect() : collect([$serviceRequest->requester_id]));
+
+        foreach ($recipients->reject(fn ($userId) => $userId === $request->user()->id) as $userId) {
+            Notification::create([
+                'user_id' => $userId,
+                'title' => 'New comment',
+                'message' => "{$request->user()->name} commented on request #{$serviceRequest->id}.",
+            ]);
+        }
+
+        return redirect()->route('requests.show', $serviceRequest)->with('status', 'Comment added.');
+    }
+
+    public function rate(Request $request, int $id): RedirectResponse
+    {
+        $serviceRequest = ServiceRequest::findOrFail($id);
+        abort_unless($serviceRequest->requester_id === $request->user()->id, 403);
+        abort_unless($serviceRequest->status === 'COMPLETED' && $serviceRequest->rating === null, 422, 'This request cannot be rated.');
+
+        $data = $request->validate([
+            'rating' => ['required', 'integer', 'between:1,5'],
+            'rating_comment' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $serviceRequest->fill([
+            'rating' => $data['rating'],
+            'rating_comment' => $data['rating_comment'] ?? null,
+            'rated_at' => now(),
+        ]);
+
+        if ($request->boolean('reopen')) {
+            $serviceRequest->status = 'PENDING';
+            $serviceRequest->due_at = now()->addHours(ServiceRequest::SLA_HOURS[$serviceRequest->priority] ?? 336);
+            $serviceRequest->escalated_at = null;
+
+            User::role('ADMIN')->each(fn ($admin) => Notification::create([
+                'user_id' => $admin->id,
+                'title' => 'Request reopened',
+                'message' => "Request #{$serviceRequest->id} was reopened by the requester.",
+            ]));
+        }
+
+        $serviceRequest->save();
+
+        return redirect()->route('requests.show', $serviceRequest)->with('status', 'Thanks for your feedback.');
+    }
+
+    private function canUpdateStatus($user, ServiceRequest $serviceRequest): bool
+    {
+        return $user->hasRole('ADMIN')
+            || ($user->hasRole('OFFICER') && $serviceRequest->assignments->contains('officer_id', $user->id));
     }
 
     public function update(Request $request, int $id): RedirectResponse

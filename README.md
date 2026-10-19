@@ -13,6 +13,70 @@
 
 For local setup, testing, API endpoint coverage, database configuration, and production deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
+## Run CampusCare Locally (Windows/XAMPP)
+
+### Prerequisites
+
+- PHP 8.2 or later
+- Composer
+- Node.js and npm
+- XAMPP (use its MySQL service for the local database)
+
+### Setup
+
+1. Open PowerShell in the project folder:
+
+   ```powershell
+   cd C:\xampp\htdocs\university-maintenance-system
+   ```
+
+2. Start **MySQL** from the XAMPP Control Panel, then create a MySQL database named `maintenance_db` (for example, using phpMyAdmin).
+
+3. Create the local environment file if it does not already exist:
+
+   ```powershell
+   if (!(Test-Path .env)) { Copy-Item .env.example .env }
+   ```
+
+4. In `.env`, set the application URL and database connection:
+
+   ```dotenv
+   APP_URL=http://127.0.0.1:8000
+   DB_CONNECTION=mysql
+   DB_HOST=127.0.0.1
+   DB_PORT=3306
+   DB_DATABASE=maintenance_db
+   DB_USERNAME=root
+   DB_PASSWORD=
+   ```
+
+   Update the database username or password if your XAMPP MySQL configuration differs.
+
+5. Install dependencies and prepare the app:
+
+   ```powershell
+   composer install
+   npm install
+   php artisan key:generate
+   php artisan migrate
+   php artisan db:seed --class=RolePermissionSeeder
+   php artisan storage:link
+   ```
+
+### Start the app
+
+Run the development services from the project folder:
+
+```powershell
+composer run dev
+```
+
+This starts Laravel, the queue worker, the log viewer, and Vite. Open **http://127.0.0.1:8000** in your browser. Stop the services with `Ctrl+C`.
+
+Alternatively, start `php artisan serve --host=127.0.0.1 --port=8000` and `npm run dev` in separate PowerShell windows.
+
+For demo accounts, tests, and additional setup or deployment details, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
 
 - [Simple, fast routing engine](https://laravel.com/docs/routing).

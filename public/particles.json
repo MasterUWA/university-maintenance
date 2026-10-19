@@ -1,0 +1,12 @@
+{
+  "count": 70,
+  "speed": 0.45,
+  "size": { "min": 1.5, "max": 3.5 },
+  "linkDistance": 140,
+  "linkWidth": 1,
+  "colors": ["#1f6f63", "#39766b", "#e5a72f"],
+  "linkColor": "31,111,99",
+  "opacity": 0.55,
+  "linkOpacity": 0.28,
+  "interaction": { "radius": 160, "push": 0.6 }
+}
